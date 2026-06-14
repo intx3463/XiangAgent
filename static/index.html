@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>xiang Agent</title>
+    <style>
+        :root {
+            --bg: #09090b;
+            --surface: #18181b;
+            --surface-hover: #27272a;
+            --border: #27272a;
+            --border-subtle: #1c1c1f;
+            --text: #fafafa;
+            --text-secondary: #a1a1aa;
+            --text-tertiary: #71717a;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --error: #ef4444;
+            --success: #22c55e;
+            --warning: #eab308;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --radius-lg: 16px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100dvh;
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+        .app {
+            display: flex;
+            flex-direction: column;
+            height: 100dvh;
+            max-width: 768px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Header */
+        .header {
+            padding: 20px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-subtle);
+            flex-shrink: 0;
+        }
+        .logo-text { font-size: 15px; font-weight: 600; letter-spacing: -0.02em; }
+        .tools-count {
+            font-size: 12px; color: var(--text-tertiary);
+            font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+        }
+
+        /* Chat */
+        .chat {
+            flex: 1; overflow-y: auto; padding: 24px 0;
+            display: flex; flex-direction: column; gap: 24px;
+        }
+        .chat::-webkit-scrollbar { width: 4px; }
+        .chat::-webkit-scrollbar-track { background: transparent; }
+        .chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+        /* Welcome */
+        .welcome {
+            flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 16px;
+        }
+        .welcome-title { font-size: 32px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.2; }
+        .welcome-subtitle { font-size: 15px; color: var(--text-secondary); line-height: 1.6; max-width: 480px; }
+        .suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .suggestion {
+            padding: 10px 16px; background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius); font-size: 13px; color: var(--text-secondary);
+            cursor: pointer; transition: all 150ms ease;
+        }
+        .suggestion:hover { background: var(--surface-hover); color: var(--text); border-color: var(--text-tertiary); }
+
+        /* Messages */
+        .message { display: flex; flex-direction: column; gap: 8px; animation: fadeUp 200ms ease-out; }
+        .message.user { align-items: flex-end; }
+        .message.assistant { align-items: flex-start; }
+        .message-meta { font-size: 12px; color: var(--text-tertiary); }
+        .bubble {
+            max-width: 85%; padding: 12px 16px;
+            border-radius: var(--radius-lg); font-size: 14px; line-height: 1.6;
+        }
+        .message.user .bubble { background: var(--accent); color: white; border-bottom-right-radius: var(--radius-sm); }
+        .message.assistant .bubble {
+            background: var(--surface); border: 1px solid var(--border);
+            border-bottom-left-radius: var(--radius-sm); width: 100%; max-width: 85%;
+        }
+
+        /* ===== Sub-Agent Thinking ===== */
+        .sub-agent-thinking {
+            background: rgba(245, 197, 24, 0.08);
+            border-left: 3px solid #F5C518;
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+            margin-bottom: 12px;
+            font-size: 13px;
+            font-style: italic;
+            color: #E0D6B8;
+            transition: max-height 200ms ease-in-out;
+            animation: slideDown 250ms ease;
+            overflow: hidden;
+        }
+        .thinking-header {
+            display: flex; align-items: center; justify-content: space-between;
+            cursor: pointer; user-select: none;
+        }
+        .thinking-header-text { display: flex; align-items: center; gap: 6px; }
+        .thinking-toggle {
+            font-size: 11px; color: var(--text-tertiary); background: none;
+            border: none; cursor: pointer; font-family: inherit; padding: 0;
+            transition: color 150ms ease;
+        }
+        .thinking-toggle:hover { color: var(--text-secondary); }
+        .thinking-body {
+            max-height: 200px; overflow-y: auto; margin-top: 8px;
+            transition: max-height 200ms ease-in-out;
+        }
+        .thinking-body::-webkit-scrollbar { width: 3px; }
+        .thinking-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .thinking-body.collapsed { max-height: 0; margin-top: 0; overflow: hidden; }
+        .thinking-line {
+            padding: 2px 0 2px 16px; position: relative;
+            font-size: 12px; line-height: 1.5;
+        }
+        .thinking-line::before {
+            content: ''; position: absolute; left: 4px; top: 8px;
+            width: 6px; height: 6px; border-radius: 50%;
+            background: rgba(245, 197, 24, 0.4);
+        }
+
+        /* ===== Tool Call Bars ===== */
+        .tool-calls-container { margin: 8px 0 12px 0; }
+        .tool-call-bar {
+            display: flex; align-items: center; position: relative;
+            min-height: 36px; overflow: hidden; white-space: nowrap;
+            font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+            font-size: 13px; padding: 0 12px; border-radius: var(--radius-sm);
+            background: rgba(128, 128, 128, 0.06);
+            transition: background 150ms ease;
+            animation: slideInLeft 200ms ease-out;
+        }
+        .tool-call-bar:hover { background: rgba(128, 128, 128, 0.12); }
+        .tool-call-bar + .tool-call-bar { margin-top: 4px; }
+        .tool-index {
+            color: var(--text-tertiary); font-size: 11px;
+            margin-right: 8px; flex-shrink: 0;
+        }
+        .tool-name {
+            flex: 1; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; color: var(--text);
+        }
+        .tool-status { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; }
+        .tool-status.waiting { color: var(--text-tertiary); }
+        .tool-status.running { color: var(--accent); animation: pulse 1.5s ease-in-out infinite; }
+        .tool-status.success { color: var(--success); }
+        .tool-status.error { color: var(--error); }
+        .tool-status-icon { font-size: 14px; }
+        .tool-status-icon.done { animation: pop 300ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .tool-expand-icon {
+            opacity: 0; transition: opacity 150ms ease;
+            font-size: 11px; color: var(--text-tertiary); margin-left: 4px;
+        }
+        .tool-call-bar:hover .tool-expand-icon { opacity: 1; }
+
+        /* ===== Tool Tooltip ===== */
+        .tool-tooltip {
+            position: absolute; z-index: 100; top: 100%; left: 0; margin-top: 4px;
+            min-width: 240px; max-width: 360px; background: var(--surface);
+            border: 1px solid var(--border); border-radius: 10px;
+            padding: 12px 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            font-size: 12px; animation: tooltipFadeIn 150ms ease-out;
+            display: none; font-style: normal;
+        }
+        .tool-tooltip.visible { display: block; }
+        .tool-tooltip-label { color: var(--text-tertiary); font-size: 11px; margin-bottom: 4px; }
+        .tool-tooltip-content {
+            color: var(--text-secondary); font-family: 'SF Mono', monospace;
+            font-size: 11px; white-space: pre-wrap; word-break: break-all;
+            line-height: 1.5;
+        }
+        .tool-tooltip-content pre {
+            background: var(--surface-hover); padding: 8px; border-radius: 6px;
+            overflow-x: auto; margin: 4px 0 0;
+        }
+
+        /* ===== "+N more" bubble ===== */
+        .tool-more-bubble {
+            display: flex; align-items: center; justify-content: center;
+            height: 28px; border-radius: 14px;
+            background: rgba(128,128,128,0.08); color: var(--text-tertiary);
+            font-size: 11px; cursor: pointer; transition: all 150ms ease;
+            margin: 4px 0; border: none; width: 100%;
+            font-family: inherit;
+        }
+        .tool-more-bubble:hover { background: rgba(128,128,128,0.15); color: var(--text-secondary); }
+        .tool-more-expanded {
+            max-height: 240px; overflow-y: auto;
+            transition: max-height 250ms ease-in-out;
+        }
+        .tool-more-expanded::-webkit-scrollbar { width: 3px; }
+        .tool-more-expanded::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .tool-more-expanded.hidden { max-height: 0; overflow: hidden; }
+
+        /* ===== Summary ===== */
+        .summary-area {
+            border-top: 1px solid var(--border-subtle);
+            padding-top: 12px; margin-top: 8px;
+        }
+        .summary-area .final-answer { margin-top: 0; padding-top: 0; border-top: none; }
+        .final-answer strong { color: var(--text); }
+        .final-answer code {
+            background: var(--surface-hover); padding: 2px 6px;
+            border-radius: 4px; font-family: 'SF Mono', monospace; font-size: 13px;
+        }
+        .final-answer h1,.final-answer h2,.final-answer h3,
+        .final-answer h4,.final-answer h5,.final-answer h6 {
+            font-weight: 600; margin: 12px 0 6px 0; line-height: 1.4; color: var(--text);
+        }
+        .final-answer h1 { font-size: 20px; }
+        .final-answer h2 { font-size: 17px; }
+        .final-answer h3 { font-size: 15px; }
+        .final-answer h4,.final-answer h5,.final-answer h6 { font-size: 14px; }
+        .final-answer hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+        .final-answer ul,.final-answer ol { padding-left: 20px; margin: 8px 0; }
+        .final-answer li { margin: 4px 0; line-height: 1.6; }
+        .final-answer pre {
+            background: var(--surface-hover); padding: 12px;
+            border-radius: var(--radius-sm); overflow-x: auto; margin: 8px 0;
+        }
+        .final-answer pre code { background: none; padding: 0; }
+        .final-answer p { margin: 8px 0; }
+
+        /* ===== Input ===== */
+        .input-area { padding: 16px 0 24px; flex-shrink: 0; }
+        .input-row { display: flex; gap: 8px; align-items: center; }
+        .input-field {
+            flex: 1; padding: 14px 16px; background: var(--surface);
+            border: 1px solid var(--border); border-radius: var(--radius);
+            color: var(--text); font-size: 14px; font-family: inherit;
+            outline: none; transition: border-color 150ms ease;
+        }
+        .input-field::placeholder { color: var(--text-tertiary); }
+        .input-field:focus { border-color: var(--accent); }
+        .send-btn {
+            width: 44px; height: 44px; border-radius: var(--radius);
+            border: 1px solid var(--border); background: var(--surface);
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all 150ms ease; flex-shrink: 0;
+        }
+        .send-btn:hover { background: var(--surface-hover); border-color: var(--text-tertiary); }
+        .send-btn:active { transform: scale(0.97); }
+        .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .send-btn svg { width: 18px; height: 18px; color: var(--text-secondary); }
+
+        /* Typing dots */
+        .typing { display: inline-flex; gap: 3px; padding: 4px 0; }
+        .typing-dot {
+            width: 4px; height: 4px; background: var(--text-tertiary);
+            border-radius: 50%; animation: blink 1.2s ease-in-out infinite;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.15s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+        /* ===== Animations ===== */
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideInLeft {
+            from { opacity: 0; transform: translateX(-12px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pop {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        @keyframes blink {
+            0%, 60%, 100% { opacity: 0.3; }
+            30% { opacity: 1; }
+        }
+        @keyframes tooltipFadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes summaryFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* ===== Mobile ===== */
+        @media (max-width: 640px) {
+            .app { padding: 0 16px; }
+            .tool-call-bar { font-size: 12px; height: 32px; padding: 0 8px; }
+            .tool-name { max-width: 90px; }
+            .tool-tooltip { min-width: 200px; max-width: calc(100vw - 32px); left: -8px; }
+            .sub-agent-thinking { font-size: 12px; padding: 8px 10px; }
+            .bubble { max-width: 95%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <span class="logo-text">xiang Agent</span>
+            <div class="tools-count" id="tools">—</div>
+        </header>
+
+        <div class="chat" id="chat">
+            <div class="welcome" id="welcome">
+                <div class="welcome-title">有什么可以帮你的？</div>
+                <div class="welcome-subtitle">我可以帮你浏览网页、搜索信息、查询天气，或者完成其他任务。</div>
+                <div class="suggestions">
+                    <div class="suggestion" onclick="sendSuggestion('使用浏览器打开哔哩哔哩')">打开哔哩哔哩</div>
+                    <div class="suggestion" onclick="sendSuggestion('查询北京天气')">查询天气</div>
+                    <div class="suggestion" onclick="sendSuggestion('获取一条动漫名言')">动漫名言</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="input-area">
+            <div class="input-row">
+                <input type="text" class="input-field" id="input" placeholder="输入你的问题..." autofocus>
+                <button class="send-btn" id="send" onclick="sendMessage()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chat = document.getElementById('chat');
+        const input = document.getElementById('input');
+        const sendBtn = document.getElementById('send');
+        let isProcessing = false;
+
+        let currentMsg = null;
+        let toolIndex = 0;
+        let toolCalls = [];
+        let thinkingLines = [];
+        let thinkingExpanded = false;
+        let moreExpanded = false;
+        let activeTooltip = null;
+
+        const toolIcons = {
+            web_search: '\u{1F50D}', open_browser: '\u{1F310}', click_element: '\u{1F446}',
+            scroll_page: '\u{1F4DC}', get_weather: '\u{1F324}', hitokoto: '\u{1F4AC}',
+            get_page_content: '\u{1F4C4}', type_text: '\u{2328}', default: '\u{1F527}'
+        };
+
+        fetch('/api/tools').then(r => r.json()).then(d => {
+            document.getElementById('tools').textContent = d.tools.length + ' tools';
+        });
+
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !isProcessing) sendMessage();
+        });
+
+        function sendSuggestion(text) { input.value = text; sendMessage(); }
+
+        function escapeHtml(t) {
+            const d = document.createElement('div');
+            d.textContent = t;
+            return d.innerHTML;
+        }
+
+        function formatArgs(args) {
+            if (!args || typeof args !== 'object') return escapeHtml(String(args));
+            const json = JSON.stringify(args, null, 2);
+            return escapeHtml(json)
+                .replace(/"([^"]+)":/g, '<span class="json-key">"$1"</span>:')
+                .replace(/: "([^"]*)"/g, ': <span class="json-str">"$1"</span>')
+                .replace(/: (\d+)/g, ': <span class="json-num">$1</span>');
+        }
+
+        function truncateStr(s, max) {
+            if (s.length <= max) return s;
+            return s.slice(0, max) + '...';
+        }
+
+        function getDuration(start, end) {
+            if (!end) return '';
+            const ms = end - start;
+            if (ms < 1000) return ms + 'ms';
+            return (ms / 1000).toFixed(1) + 's';
+        }
+
+        function getStatusLabel(status) {
+            return { waiting: '\u7B49\u5F85\u4E2D', running: '\u6267\u884C\u4E2D...', success: '\u5B8C\u6210', error: '\u5931\u8D25' }[status] || status;
+        }
+
+        function createToolBar(call) {
+            const bar = document.createElement('div');
+            bar.className = 'tool-call-bar';
+            bar.dataset.id = call.id;
+
+            const hasDetail = call.arguments && Object.keys(call.arguments).length > 0;
+
+            bar.innerHTML = `
+                <span class="tool-index">[T${call.index}]</span>
+                <span class="tool-name">${escapeHtml(call.name)}</span>
+            `;
+
+            if (hasDetail) {
+                const tooltip = document.createElement('div');
+                tooltip.className = 'tool-tooltip';
+                const argsStr = call.arguments ? JSON.stringify(call.arguments, null, 2) : '';
+                const resultStr = call.result || '';
+                tooltip.innerHTML = `
+                    ${argsStr ? `<div class="tool-tooltip-label">\u53C2\u6570:</div><div class="tool-tooltip-content"><pre>${formatArgs(call.arguments)}</pre></div>` : ''}
+                    ${resultStr ? `<div class="tool-tooltip-label" style="margin-top:8px">\u7ED3\u679C:</div><div class="tool-tooltip-content">${escapeHtml(truncateStr(resultStr, 200))}</div>` : ''}
+                `;
+                bar.appendChild(tooltip);
+
+                bar.addEventListener('mouseenter', () => {
+                    if (activeTooltip && activeTooltip !== tooltip) activeTooltip.classList.remove('visible');
+                    tooltip.classList.add('visible');
+                    activeTooltip = tooltip;
+                });
+                bar.addEventListener('mouseleave', () => {
+                    setTimeout(() => { if (!bar.matches(':hover')) tooltip.classList.remove('visible'); }, 100);
+                });
+            }
+
+            return bar;
+        }
+
+        function renderToolCalls() {
+            if (!currentMsg) return;
+            let container = currentMsg.querySelector('.tool-calls-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'tool-calls-container';
+                const bubble = currentMsg.querySelector('.bubble');
+                const thinkingEl = currentMsg.querySelector('.sub-agent-thinking');
+                const summaryArea = currentMsg.querySelector('.summary-area');
+                if (thinkingEl) thinkingEl.after(container);
+                else if (summaryArea) summaryArea.before(container);
+                else bubble.appendChild(container);
+            }
+
+            container.innerHTML = '';
+            const total = toolCalls.length;
+
+            if (total <= 5) {
+                toolCalls.forEach(call => container.appendChild(createToolBar(call)));
+            } else {
+                const hidden = toolCalls.slice(0, -3);
+                const visible = toolCalls.slice(-3);
+
+                const moreBtn = document.createElement('button');
+                moreBtn.className = 'tool-more-bubble';
+                moreBtn.textContent = moreExpanded ? '\u6536\u8D77\u5168\u90E8 \u25B4' : `\u2509\u2509 +${hidden.length} more \u2509\u2509`;
+                container.appendChild(moreBtn);
+
+                const expandedDiv = document.createElement('div');
+                expandedDiv.className = 'tool-more-expanded' + (moreExpanded ? '' : ' hidden');
+                hidden.forEach(call => expandedDiv.appendChild(createToolBar(call)));
+                container.appendChild(expandedDiv);
+
+                visible.forEach(call => container.appendChild(createToolBar(call)));
+
+                moreBtn.onclick = () => {
+                    moreExpanded = !moreExpanded;
+                    expandedDiv.classList.toggle('hidden', !moreExpanded);
+                    moreBtn.textContent = moreExpanded ? '\u6536\u8D77\u5168\u90E8 \u25B4' : `\u2509\u2509 +${hidden.length} more \u2509\u2509`;
+                };
+            }
+
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function renderThinking() {
+            if (!currentMsg || thinkingLines.length === 0) return;
+            let el = currentMsg.querySelector('.sub-agent-thinking');
+            if (!el) {
+                el = document.createElement('div');
+                el.className = 'sub-agent-thinking';
+                const bubble = currentMsg.querySelector('.bubble');
+                bubble.insertBefore(el, bubble.firstChild);
+            }
+
+            const isShort = thinkingLines.length <= 3;
+            const summary = thinkingLines.map(l => truncateStr(l, 80)).join(' \u2192 ');
+
+            if (isShort) {
+                el.innerHTML = `<div class="thinking-header-text">\u{1F7E1} ${escapeHtml(summary)}</div>`;
+            } else {
+                el.innerHTML = `
+                    <div class="thinking-header" onclick="toggleThinking()">
+                        <span class="thinking-header-text">\u{1F7E1} ${escapeHtml(truncateStr(summary, 120))}</span>
+                        <button class="thinking-toggle">${thinkingExpanded ? '\u6536\u8D77 \u25B4' : `\u5C55\u5F00 \u25BE (${thinkingLines.length})`}</button>
+                    </div>
+                    <div class="thinking-body ${thinkingExpanded ? '' : 'collapsed'}">
+                        ${thinkingLines.map(l => `<div class="thinking-line">${escapeHtml(l)}</div>`).join('')}
+                    </div>
+                `;
+            }
+
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function toggleThinking() {
+            thinkingExpanded = !thinkingExpanded;
+            renderThinking();
+        }
+
+        function renderSummary(content) {
+            if (!currentMsg) return;
+            let area = currentMsg.querySelector('.summary-area');
+            if (!area) {
+                area = document.createElement('div');
+                area.className = 'summary-area';
+                currentMsg.querySelector('.bubble').appendChild(area);
+            }
+            area.innerHTML = `<div class="final-answer">${formatMarkdown(content)}</div>`;
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function formatMarkdown(text) {
+            let html = text;
+            html = html.replace(/```([\s\S]*?)```/g, (_, c) => `<pre><code>${c.trim()}</code></pre>`);
+            html = html.replace(/^######\s+(.+)$/gm, '<h6>$1</h6>');
+            html = html.replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>');
+            html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
+            html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
+            html = html.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
+            html = html.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
+            html = html.replace(/^(-{3,}|\*{3,}|_{3,})$/gm, '<hr>');
+            
+            const lines = html.split('\n');
+            let result = [], inUl = false, inOl = false;
+            for (const line of lines) {
+                const isUl = /^-\s+/.test(line);
+                const isOl = /^\d+\.\s+/.test(line);
+                if (isUl && !inUl) { result.push('<ul>'); inUl = true; }
+                if (isOl && !inOl) { result.push('<ol>'); inOl = true; }
+                if (!isUl && inUl) { result.push('</ul>'); inUl = false; }
+                if (!isOl && inOl) { result.push('</ol>'); inOl = false; }
+                if (isUl) result.push('<li>' + line.replace(/^-\s+/, '') + '</li>');
+                else if (isOl) result.push('<li>' + line.replace(/^\d+\.\s+/, '') + '</li>');
+                else if (line.trim() === '') result.push('<br>');
+                else result.push(line);
+            }
+            if (inUl) result.push('</ul>');
+            if (inOl) result.push('</ol>');
+            html = result.join('\n');
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            html = html.replace(/`(.*?)`/g, '<code>$1</code>');
+            html = html.replace(/\n/g, '<br>');
+            return html;
+        }
+
+        function updateToolCall(event) {
+            const meta = event.metadata || {};
+            if (event.type === 'tool_call') {
+                toolIndex++;
+                const name = meta.tool_name || event.content || 'unknown';
+                const existing = toolCalls.find(c => c.name === name && c.status === 'running');
+                if (existing) {
+                    existing.arguments = meta.tool_args || existing.arguments;
+                } else {
+                    toolCalls.push({
+                        id: 'tc_' + Date.now() + '_' + toolIndex,
+                        index: toolIndex,
+                        name: name,
+                        arguments: meta.tool_args || {},
+                        status: 'running',
+                        startTime: Date.now(),
+                        endTime: null,
+                        result: null
+                    });
+                }
+            } else if (event.type === 'tool_result') {
+                const name = meta.tool_name || event.content;
+                const running = toolCalls.find(c => c.name === name && c.status === 'running');
+                if (running) {
+                    running.status = event.content && (event.content.includes('error') || event.content.includes('Error')) ? 'error' : 'success';
+                    running.endTime = Date.now();
+                    running.result = event.content || '';
+                } else {
+                    toolIndex++;
+                    toolCalls.push({
+                        id: 'tc_' + Date.now() + '_' + toolIndex,
+                        index: toolIndex,
+                        name: name || 'unknown',
+                        status: 'success',
+                        startTime: Date.now() - 100,
+                        endTime: Date.now(),
+                        result: event.content || '',
+                        arguments: {}
+                    });
+                }
+            }
+            renderToolCalls();
+        }
+
+        function addMessage(role, content) {
+            const welcome = document.getElementById('welcome');
+            if (welcome) welcome.remove();
+            const div = document.createElement('div');
+            div.className = `message ${role}`;
+            div.innerHTML = `
+                <div class="message-meta">${role === 'user' ? 'You' : 'Agent'}</div>
+                <div class="bubble">${escapeHtml(content)}</div>
+            `;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+            return div;
+        }
+
+        async function sendMessage() {
+            const query = input.value.trim();
+            if (!query || isProcessing) return;
+
+            isProcessing = true;
+            sendBtn.disabled = true;
+            input.value = '';
+            toolIndex = 0;
+            toolCalls = [];
+            thinkingLines = [];
+            thinkingExpanded = false;
+            moreExpanded = false;
+            if (activeTooltip) { activeTooltip.classList.remove('visible'); activeTooltip = null; }
+
+            addMessage('user', query);
+            currentMsg = addMessage('assistant', '');
+            let fullResponse = '';
+
+            try {
+                const response = await fetch(`/api/chat?query=${encodeURIComponent(query)}`);
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const text = decoder.decode(value);
+                    const lines = text.split('\n');
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        const data = line.slice(6);
+                        if (data === '[DONE]') continue;
+
+                        try {
+                            const event = JSON.parse(data);
+
+                            if (event.type === 'final') {
+                                const streamingEl = currentMsg.querySelector('.streaming-text');
+                                if (streamingEl) streamingEl.remove();
+                                renderSummary(event.content);
+                            } else if (event.type === 'token') {
+                                fullResponse += event.content;
+                                const bubble = currentMsg.querySelector('.bubble');
+                                const existing = bubble.querySelector('.streaming-text');
+                                if (existing) {
+                                    existing.innerHTML = formatMarkdown(fullResponse);
+                                } else {
+                                    const span = document.createElement('div');
+                                    span.className = 'streaming-text';
+                                    span.innerHTML = formatMarkdown(fullResponse);
+                                    bubble.appendChild(span);
+                                }
+                                chat.scrollTop = chat.scrollHeight;
+                            } else if (event.type === 'tool_call' || event.type === 'tool_result') {
+                                updateToolCall(event);
+                            } else if (event.type === 'thinking') {
+                                thinkingLines.push(event.content);
+                                renderThinking();
+                            }
+                        } catch (e) {}
+                    }
+                }
+            } catch (error) {
+                const bubble = currentMsg.querySelector('.bubble');
+                bubble.innerHTML = `<span style="color: var(--error)">\u8BF7\u6C42\u5931\u8D25: ${error.message}</span>`;
+            }
+
+            isProcessing = false;
+            sendBtn.disabled = false;
+            input.focus();
+        }
+    </script>
+</body>
+</html>

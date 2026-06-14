@@ -1,0 +1,7 @@
+{
+  "calculator": {
+    "description": "一个简单的计算器工具，用于计算数学表达式。支持基本的加减乘除运算和括号。",
+    "created_at": "2026-06-14 18:17:35",
+    "file": "calculator.py"
+  }
+}
