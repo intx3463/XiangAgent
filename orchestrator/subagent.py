@@ -1,9 +1,10 @@
 import asyncio
 import random
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, AIMessageChunk, ToolMessage
+from langchain_core.messages import HumanMessage, AIMessage, AIMessageChunk, ToolMessage
 from .queue import TokenQueue, TokenEvent
 from tools.registry import get_tools_by_names
+from tools.builder import load_custom_tools
 
 SUBAGENT_PROMPT = """你是一个研究助手。针对以下任务进行搜索和分析。
 
@@ -36,6 +37,7 @@ async def run_subagent(
 ) -> str:
     """单个子 Agent 的执行逻辑，流式输出，支持退避重试"""
 
+    load_custom_tools()  # 确保自定义工具已加载
     tools = get_tools_by_names(assigned_tools)
 
     context_section = ""
@@ -78,16 +80,21 @@ async def run_subagent(
 
                         messages = node_output.get("messages", [])
                         for msg in messages:
-                            if isinstance(msg, AIMessageChunk):
+                            if isinstance(msg, (AIMessage, AIMessageChunk)):
                                 if msg.tool_calls:
                                     for tc in msg.tool_calls:
-                                        tool_name = tc.get("name", "unknown")
+                                        tool_name = tc.get("name", "")
                                         tool_args = tc.get("args", {})
+                                        # 如果 tool_name 为空，使用工具调用的第一个参数值
+                                        if not tool_name and tool_args:
+                                            tool_name = next(iter(tool_args.values()), "未知操作")
+                                        elif not tool_name:
+                                            tool_name = "未知操作"
                                         tool_call_list.append(tool_name)
                                         queue.put(TokenEvent(
                                             task_id=task_id,
                                             token_type="tool_call",
-                                            content=f"  [{task_id}] 调用工具: {tool_name}",
+                                            content=f"  [{task_id}] {tool_name}",
                                             metadata={"tool_name": tool_name, "tool_args": tool_args}
                                         ))
                                 if msg.content:

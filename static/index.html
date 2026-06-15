@@ -576,7 +576,12 @@
             const meta = event.metadata || {};
             if (event.type === 'tool_call') {
                 toolIndex++;
-                const name = meta.tool_name || event.content || 'unknown';
+                let name = meta.tool_name || 'unknown';
+                // 如果 tool_name 为 unknown，尝试从 content 中提取任务 ID
+                if (name === 'unknown' && event.content) {
+                    const match = event.content.match(/\[([^\]]+)\]/);
+                    if (match) name = match[1];
+                }
                 const existing = toolCalls.find(c => c.name === name && c.status === 'running');
                 if (existing) {
                     existing.arguments = meta.tool_args || existing.arguments;
@@ -593,7 +598,12 @@
                     });
                 }
             } else if (event.type === 'tool_result') {
-                const name = meta.tool_name || event.content;
+                let name = meta.tool_name || 'unknown';
+                // 如果 tool_name 为 unknown，尝试从 content 中提取任务 ID
+                if (name === 'unknown' && event.content) {
+                    const match = event.content.match(/\[([^\]]+)\]/);
+                    if (match) name = match[1];
+                }
                 const running = toolCalls.find(c => c.name === name && c.status === 'running');
                 if (running) {
                     running.status = event.content && (event.content.includes('error') || event.content.includes('Error')) ? 'error' : 'success';
@@ -604,7 +614,7 @@
                     toolCalls.push({
                         id: 'tc_' + Date.now() + '_' + toolIndex,
                         index: toolIndex,
-                        name: name || 'unknown',
+                        name: name,
                         status: 'success',
                         startTime: Date.now() - 100,
                         endTime: Date.now(),

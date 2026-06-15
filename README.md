@@ -95,8 +95,35 @@ python server.py
 - 新标签页管理（打开、切换、列出）
 - 获取页面内容、截图、执行 JavaScript
 
-### 动态工具
-通过 `tools/builder.py` 运行时创建新工具并持久化。
+### 动态工具创建
+通过 `tools/builder.py` 运行时创建新工具并持久化到 `tools/custom/`。
+
+**使用方式**：直接告诉 agent 创建工具
+```
+创建一个计算器工具
+写一个翻译工具
+开发一个文件处理工具
+```
+
+**工作流程**：
+1. 路由器识别"创建工具"关键词，路由到 decompose 模式
+2. 分解器生成工具代码（使用 `@tool` 装饰器）
+3. 沙箱验证并执行代码，注册到 `TOOL_REGISTRY`
+4. 工具代码持久化到 `tools/custom/<name>.py`
+5. 索引更新到 `tools/custom/_index.json`
+
+**存储位置**：
+| 文件 | 说明 |
+|------|------|
+| `tools/custom/<name>.py` | 工具实现代码 |
+| `tools/custom/_index.json` | 工具索引（名称、描述、创建时间） |
+| `tools/registry.py` | 运行时注册表 `TOOL_REGISTRY` |
+
+**安全机制**：
+- AST 语法验证，确保代码合法
+- 禁止导入危险模块（os, sys, subprocess 等）
+- 限制可用模块（仅 json, re, math, datetime, requests）
+- 工具必须使用 `@tool` 装饰器和类型注解
 
 ## 架构
 
@@ -109,11 +136,15 @@ python server.py
 │   ├── router.py         # 问题类型路由
 │   ├── decompose.py      # 任务分解
 │   ├── subagent.py       # 子 Agent 并发执行
-│   └── synthesize.py     # 结果综合
+│   ├── synthesize.py     # 结果综合
+│   └── queue.py          # SSE 事件队列
 ├── tools/
 │   ├── registry.py       # 工具注册中心
 │   ├── browser.py        # Playwright 浏览器管理
-│   └── browser_tools.py  # 浏览器工具定义
+│   ├── browser_tools.py  # 浏览器工具定义
+│   ├── builder.py        # 动态工具构建器
+│   ├── sandbox.py        # 工具代码沙箱执行
+│   └── custom/           # 动态创建的工具
 └── static/
     └── index.html        # Web 前端
 ```

@@ -1,7 +1,7 @@
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 
-SYNTHESIZE_PROMPT = """你是一个综合分析专家。请将以下多个研究结果综合成一个完整、连贯的回答。
+SYNTHESIZE_PROMPT = """你是一个综合分析专家。请将以下多个研究结果综合成简洁的回答。
 
 用户原始问题: {query}
 
@@ -14,11 +14,12 @@ SYNTHESIZE_PROMPT = """你是一个综合分析专家。请将以下多个研究
 - 如果所有任务都失败了，如实告知用户并建议重试
 
 要求:
-1. 综合所有有效子任务的结果
-2. 对失败的任务如实说明原因
-3. 组织成结构清晰的回答
+1. 回答要简洁，只输出最重要的信息
+2. 不要重复问题，直接给出答案
+3. 不要输出过程描述，只输出结果
 4. 用中文回答
-5. markdown 标题格式必须是 `## 标题`（# 后必须有一个空格）"""
+5. 不要使用 markdown 标题格式
+6. 控制在 100 字以内"""
 
 
 def format_results(results: dict[str, str]) -> str:

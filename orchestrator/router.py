@@ -42,6 +42,11 @@ async def route(
     tool_descriptions: str,
 ) -> dict:
     """主模型判断是否需要分解任务"""
+    # 关键词回退检查：创建工具请求必须走 decompose
+    create_keywords = ["创建工具", "创建一个", "写一个工具", "开发工具", "新建工具"]
+    if any(kw in query for kw in create_keywords):
+        return {"decision": "decompose", "reason": "检测到创建工具请求（关键词匹配）"}
+
     prompt = ROUTER_PROMPT.format(tool_descriptions=tool_descriptions, query=query)
     response = await llm.ainvoke([HumanMessage(content=prompt)])
     return _parse_json_response(response.content)

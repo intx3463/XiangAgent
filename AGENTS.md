@@ -83,8 +83,46 @@ python server.py
 | `browser_screenshot` | 截图 |
 | `browser_evaluate` | 执行 JavaScript |
 
-### 动态工具
+### 动态工具创建
 通过 `tools/builder.py` 运行时创建新工具并持久化到 `tools/custom/`。
+
+**使用方式**：直接告诉 agent 创建工具
+```
+创建一个计算器工具
+写一个翻译工具
+开发一个文件处理工具
+```
+
+**工作流程**：
+1. 路由器识别"创建工具"关键词（创建工具、创建一个、写一个工具、开发工具、新建工具），路由到 decompose 模式
+2. 分解器生成工具代码（使用 `@tool` 装饰器）
+3. `tool_build_node` 调用 `build_tool()` 创建工具
+4. 沙箱验证并执行代码，注册到 `TOOL_REGISTRY`
+5. 工具代码持久化到 `tools/custom/<name>.py`
+6. 索引更新到 `tools/custom/_index.json`
+
+**存储位置**：
+| 文件 | 说明 |
+|------|------|
+| `tools/custom/<name>.py` | 工具实现代码 |
+| `tools/custom/_index.json` | 工具索引（名称、描述、创建时间） |
+| `tools/registry.py` | 运行时注册表 `TOOL_REGISTRY` |
+
+**安全机制**：
+- AST 语法验证，确保代码合法
+- 禁止导入危险模块（os, sys, subprocess, shutil, pathlib, socket 等）
+- 限制可用模块（仅 json, re, math, datetime, collections, requests）
+- 工具必须使用 `@tool` 装饰器和类型注解
+
+**关键代码**：
+| 文件 | 函数 | 作用 |
+|------|------|------|
+| `tools/builder.py` | `build_tool()` | 创建并注册工具 |
+| `tools/builder.py` | `load_custom_tools()` | 启动时加载已持久化的工具 |
+| `tools/sandbox.py` | `safe_exec_tool()` | 沙箱执行工具代码 |
+| `tools/sandbox.py` | `validate_tool_code()` | AST 安全验证 |
+| `orchestrator/router.py` | `route()` | 关键词匹配创建工具请求 |
+| `orchestrator/decompose.py` | `decompose()` | 生成工具代码和子任务 |
 
 ## 架构
 

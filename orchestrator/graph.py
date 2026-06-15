@@ -116,11 +116,15 @@ def build_graph(llm: BaseChatModel, tool_descriptions: str, queue: TokenQueue):
                         if isinstance(msg, AIMessageChunk):
                             if msg.tool_calls:
                                 for tc in msg.tool_calls:
-                                    tool_name = tc.get("name", "unknown")
+                                    tool_name = tc.get("name", "")
                                     tool_args = tc.get("args", {})
+                                    if not tool_name and tool_args:
+                                        tool_name = next(iter(tool_args.values()), "浏览器操作")
+                                    elif not tool_name:
+                                        tool_name = "浏览器操作"
                                     queue.put(TokenEvent(
                                         task_id="browser", token_type="tool_call",
-                                        content=f"[浏览器] 调用工具: {tool_name}",
+                                        content=f"[浏览器] {tool_name}",
                                         metadata={"tool_name": tool_name, "tool_args": tool_args}
                                     ))
                             if msg.content:
@@ -173,11 +177,16 @@ def build_graph(llm: BaseChatModel, tool_descriptions: str, queue: TokenQueue):
                         if isinstance(msg, AIMessageChunk):
                             if msg.tool_calls:
                                 for tc in msg.tool_calls:
-                                    tool_name = tc.get("name", "unknown")
+                                    tool_name = tc.get("name", "")
+                                    tool_args = tc.get("args", {})
+                                    if not tool_name and tool_args:
+                                        tool_name = next(iter(tool_args.values()), "工具操作")
+                                    elif not tool_name:
+                                        tool_name = "工具操作"
                                     queue.put(TokenEvent(
                                         task_id="tools", token_type="tool_call",
-                                        content=f"[工具] 调用工具: {tool_name}",
-                                        metadata={"tool_name": tool_name}
+                                        content=f"[工具] {tool_name}",
+                                        metadata={"tool_name": tool_name, "tool_args": tool_args}
                                     ))
                             if msg.content:
                                 token = msg.content if isinstance(msg.content, str) else ""
@@ -209,7 +218,12 @@ def build_graph(llm: BaseChatModel, tool_descriptions: str, queue: TokenQueue):
             if tool_name in TOOL_REGISTRY:
                 queue.put(TokenEvent(task_id="main", token_type="status", content=f"使用本地工具: {tool_name}"))
                 tool_obj = TOOL_REGISTRY[tool_name]
-                tool_result = tool_obj.invoke({})
+                if tool_name == "internet_search":
+                    tool_result = tool_obj.invoke({"query": query})
+                elif tool_name == "weather":
+                    tool_result = tool_obj.invoke({"city": query})
+                else:
+                    tool_result = tool_obj.invoke({})
                 full_response = str(tool_result)
             else:
                 create_keywords = ["创建工具", "创建一个", "写一个工具", "开发工具", "新建工具"]
@@ -282,8 +296,6 @@ def build_graph(llm: BaseChatModel, tool_descriptions: str, queue: TokenQueue):
             t.setdefault("tools", [])
             t.setdefault("status", "pending")
         queue.put(TokenEvent(task_id="main", token_type="status", content=f"分解为 {len(tasks)} 个子任务"))
-        for t in tasks:
-            queue.put(TokenEvent(task_id="main", token_type="thinking", content=f"  {t['id']}: {t.get('description', t['query'])[:60]}"))
         return {
             "analysis": result.get("analysis", ""),
             "tasks": tasks,
