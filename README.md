@@ -16,7 +16,7 @@
 
 ```bash
 # 1. 克隆项目
-git clone <repo_url>
+git clone https://github.com/intx3463/XiangAgent.git
 cd agnet_1
 
 # 2. 创建虚拟环境
